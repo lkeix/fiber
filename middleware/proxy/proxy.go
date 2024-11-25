@@ -46,6 +46,8 @@ func Balancer(config Config) fiber.Handler {
 
 				TLSConfig: config.TlsConfig,
 
+				RetryIfErr: newRetryFunc(&cfg),
+
 				DialDualStack: config.DialDualStack,
 			}
 

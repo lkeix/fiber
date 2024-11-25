@@ -62,6 +62,11 @@ type Config struct {
 	//
 	// Optional. Default: false
 	DialDualStack bool
+
+	// Attenpt to retry the request if the request fails
+	//
+	// Optional. Default: 0
+	Retry int
 }
 
 // ConfigDefault is the default config
