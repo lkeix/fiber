@@ -1,5 +1,7 @@
 package proxy
 
-import "github.com/valyala/fasthttp"
+import (
+	"github.com/gofiber/fiber/v3"
+)
 
-type RetryIf func(req *fasthttp.Request, res *fasthttp.Response, err error) bool
+type RetryIf func(ctx fiber.Ctx, cb CircuitBreaker, err error) bool

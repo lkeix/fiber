@@ -57,6 +57,8 @@ func Balancer(config Config) fiber.Handler {
 		lbc = config.Client
 	}
 
+	cb := newCircuitBreaker(cfg.SuccessThresholdRatio, cfg.InitializeCountDuration, cfg.RecoveryTimeout)
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -80,21 +82,19 @@ func Balancer(config Config) fiber.Handler {
 
 		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 
-		cb := newCircuitBreaker(cfg.SuccessThresholdRatio, cfg.InitializeCountDuration, cfg.RecoveryTimeout)
-
 		retryDo := func(req *fasthttp.Request, res *fasthttp.Response) error {
 			baseInterval := time.Millisecond * 500
 
-			for i := 0; i < cfg.MaxRetryCount; i++ {
+			maxRetryCount := 1
+			if cfg.MaxRetryCount > 1 {
+				maxRetryCount = cfg.MaxRetryCount
+			}
+
+			var err error
+			for i := 0; i < maxRetryCount; i++ {
 				if cb.isAllowed() {
-					err := lbc.Do(req, res)
-					if cfg.RetryIf == nil || !cfg.RetryIf(req, res, err) {
-						if err != nil {
-							cb.onFailure()
-						} else {
-							cb.onSuccess()
-							return nil
-						}
+					err = lbc.Do(req, res)
+					if cfg.RetryIf != nil && !cfg.RetryIf(c, cb, err) {
 						return err
 					}
 				}
@@ -104,7 +104,7 @@ func Balancer(config Config) fiber.Handler {
 				time.Sleep(backoff + jitter)
 			}
 
-			return fasthttp.ErrTimeout
+			return err
 		}
 
 		// Forward request

@@ -29,6 +29,14 @@ func (s status) isClosed() bool {
 	return s == statusClosed
 }
 
+type CircuitBreaker interface {
+	isAllowed() bool
+	OnFailure()
+	OnSuccess()
+}
+
+var _ CircuitBreaker = &circuitBreaker{}
+
 type circuitBreaker struct {
 	status status // status is the current state of the circuit breaker
 	failureCount int // failureCount is the number of consecutive failures
@@ -36,8 +44,8 @@ type circuitBreaker struct {
 	successThresholdRatio float64 // thresholdRatio is the ratio of failures to successes required to trip the circuit breaker
 	initializeCountDuration time.Duration // initializeCountDuration is the duration to wait before resetting the failure count
 	recoveryTimeout time.Duration // recoveryTimeout is the duration to wait before transitioning from open to half-open
-	lastSuccessTime time.Time // lastSuccessTime is the time of the last success
 	lastFailureTime time.Time // lastFailureTime is the time of the last failure
+	lastResetCountTime time.Time // lastInitizliedTime is the time of the last initialized count
 	mutex sync.Mutex
 }
 
@@ -48,6 +56,7 @@ func newCircuitBreaker(successThresholdRatio float64, initializeCountDuration, r
 		successCount: 0,
 		successThresholdRatio: successThresholdRatio,
 		initializeCountDuration: initializeCountDuration,
+		lastResetCountTime: time.Now(),
 		recoveryTimeout: recoveryTimeout,
 		mutex: sync.Mutex{},
 	}
@@ -56,6 +65,10 @@ func newCircuitBreaker(successThresholdRatio float64, initializeCountDuration, r
 func (cb *circuitBreaker) isAllowed() bool {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
+
+	if cb.isReadyInitialized() {
+		cb.resetCount()
+	}
 
 	switch cb.status {
 	case statusOpen:
@@ -80,28 +93,26 @@ func (cb *circuitBreaker) isAllowed() bool {
 	return false
 }
 
-func (cb *circuitBreaker) onFailure() {
-	cb.mutex.Lock()
-	defer cb.mutex.Unlock()
-
-	if time.Since(cb.lastFailureTime) > cb.initializeCountDuration {
-		cb.failureCount = 0
-		cb.successCount = 0
-	}
-
-	cb.failureCount++
-	cb.lastFailureTime = time.Now()
+func (cb *circuitBreaker) isReadyInitialized() bool {
+	return time.Since(cb.lastResetCountTime) > cb.initializeCountDuration
 }
 
-func (cb *circuitBreaker) onSuccess() {
+func (cb *circuitBreaker) resetCount() {
+	cb.failureCount = 0
+	cb.successCount = 0
+	cb.lastResetCountTime = time.Now()
+}
+
+func (cb *circuitBreaker) OnFailure() {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
-	if time.Since(cb.lastSuccessTime) > cb.initializeCountDuration {
-		cb.failureCount = 0
-		cb.successCount = 0
-	}
+	cb.failureCount++
+}
+
+func (cb *circuitBreaker) OnSuccess() {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
 	
 	cb.successCount++
-	cb.lastSuccessTime = time.Now()
 }
