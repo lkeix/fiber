@@ -1,15 +1,5 @@
 package proxy
 
-import (
-	"github.com/valyala/fasthttp"
-)
+import "github.com/valyala/fasthttp"
 
-func newRetryFunc(c *Config) fasthttp.RetryIfErrFunc {
-	return func(req *fasthttp.Request, attempt int, err error) (bool, bool) {
-		if c.Retry > attempt {
-			return true, true
-		}
-
-		return false, false
-	}
-}
+type RetryIf func(req *fasthttp.Request, res *fasthttp.Response, err error) bool

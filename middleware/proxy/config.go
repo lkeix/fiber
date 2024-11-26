@@ -63,10 +63,32 @@ type Config struct {
 	// Optional. Default: false
 	DialDualStack bool
 
-	// Attenpt to retry the request if the request fails
+	// RetryIf is a function to determine whether the request should be retried
+	//
+	// Optional. Default: nil
+	RetryIf RetryIf
+
+	// MaxRetryCount is the maximum number of retries
 	//
 	// Optional. Default: 0
-	Retry int
+	MaxRetryCount int
+
+	// CircuitBreaker is a configuration for the circuit breaker
+	//
+	// successThresholdRatio is the ratio of failures to successes required to trip the circuit breaker
+	//
+	// Optional. Default: 0
+	SuccessThresholdRatio float64
+
+	// InitializeCountDuration is the duration to wait before resetting the failure count
+	//
+	// Optional. Default: 0
+	InitializeCountDuration time.Duration
+
+	// RecoveryTimeout is the duration to wait before transitioning from open to half-open
+	//
+	// Optional. Default: 0
+	RecoveryTimeout time.Duration
 }
 
 // ConfigDefault is the default config

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"golang.org/x/exp/rand"
 
 	"github.com/valyala/fasthttp"
 )
@@ -46,8 +47,6 @@ func Balancer(config Config) fiber.Handler {
 
 				TLSConfig: config.TlsConfig,
 
-				RetryIfErr: newRetryFunc(&cfg),
-
 				DialDualStack: config.DialDualStack,
 			}
 
@@ -81,8 +80,35 @@ func Balancer(config Config) fiber.Handler {
 
 		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 
+		cb := newCircuitBreaker(cfg.SuccessThresholdRatio, cfg.InitializeCountDuration, cfg.RecoveryTimeout)
+
+		retryDo := func(req *fasthttp.Request, res *fasthttp.Response) error {
+			baseInterval := time.Millisecond * 500
+
+			for i := 0; i < cfg.MaxRetryCount; i++ {
+				if cb.isAllowed() {
+					err := lbc.Do(req, res)
+					if cfg.RetryIf == nil || !cfg.RetryIf(req, res, err) {
+						if err != nil {
+							cb.onFailure()
+						} else {
+							cb.onSuccess()
+							return nil
+						}
+						return err
+					}
+				}
+
+				backoff := baseInterval * (1 << i)
+				jitter := time.Duration(rand.Int63n(int64(backoff / 2)))
+				time.Sleep(backoff + jitter)
+			}
+
+			return fasthttp.ErrTimeout
+		}
+
 		// Forward request
-		if err := lbc.Do(req, res); err != nil {
+		if err := retryDo(req, res); err != nil {
 			return err
 		}
 
